@@ -1,0 +1,10 @@
+{
+  "$schema": "https://wails.io/schemas/wails.json",
+  "name": "moor",
+  "outputfilename": "moor",
+  "frontend:assetstore": "frontend/dist",
+  "frontend:install": "",
+  "frontend:build": "",
+  "frontend:dev:watchdir": "frontend/dist",
+  "frontend:dev:serverurl": "http://localhost:34115"
+}

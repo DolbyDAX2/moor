@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Moor
+GenericName=Sunucu Kontrolü
+Comment=Sunucu yönetim ve senkron uygulaması
+Exec=moor
+Icon=moor
+Terminal=false
+Categories=Utility;Network;

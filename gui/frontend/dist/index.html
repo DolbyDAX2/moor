@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>moor</title>
+  <link rel="stylesheet" href="./vendor/xterm.css" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Üst bar -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo"></span>
+        <h1 class="brand-name">moor</h1>
+      </div>
+      <div class="topbar-actions">
+        <input id="search" type="text" placeholder="Ara: ad, host, etiket…" autocomplete="off" />
+        <button id="btn-ping" class="btn ghost" title="Tümüne ping (TCP sağlık)">
+          <span class="ico">◎</span> Ping
+        </button>
+        <button id="btn-import" class="btn ghost" title="~/.ssh/config'ten içe aktar">Config'ten</button>
+        <button id="btn-restore" class="btn ghost" title="JSON yedekten geri yükle">Yedekten</button>
+        <input id="restore-file" type="file" accept=".json,application/json" hidden />
+        <button id="btn-export" class="btn ghost" title="JSON yedeği indir">Dışa aktar</button>
+        <button id="btn-termview" class="btn ghost hidden" title="Açık terminal sekmeleri">⌨ Terminal</button>
+        <button id="btn-sync" class="btn ghost" title="Buluta oturum aç / hesap">☁ Oturum aç</button>
+        <button id="btn-add" class="btn primary">+ Yeni Sunucu</button>
+      </div>
+    </header>
+
+    <!-- Ana içerik -->
+    <main class="main">
+      <!-- Sunucu listesi -->
+      <section class="list-pane">
+        <div id="server-list" class="server-list"></div>
+      </section>
+
+      <!-- Detay -->
+      <section class="detail-pane">
+        <div id="detail" class="detail"></div>
+      </section>
+
+      <!-- Gömülü terminal (varsayılanda gizli) -->
+      <section id="terminal-view" class="terminal-view hidden">
+        <div class="term-bar">
+          <button id="term-back" class="btn ghost">← Listeye dön</button>
+          <div id="term-tabs" class="term-tabs"></div>
+          <button id="term-close" class="btn danger">Oturumu kapat</button>
+        </div>
+        <div id="term-host"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Ekle / düzenle modalı -->
+  <div id="form-overlay" class="overlay hidden">
+    <div class="modal">
+      <div class="modal-head">
+        <h2 id="form-title">Yeni Sunucu</h2>
+        <button class="modal-close" data-close>&times;</button>
+      </div>
+      <form id="server-form" autocomplete="off" novalidate>
+        <div class="grid">
+          <label class="field">
+            <span>Ad <i>*</i></span>
+            <input name="name" type="text" placeholder="örn. oracle-prod" required />
+          </label>
+          <label class="field">
+            <span>Host <i>*</i></span>
+            <input name="host" type="text" placeholder="IP veya alan adı" required />
+          </label>
+          <label class="field">
+            <span>Port</span>
+            <input name="port" type="number" min="1" max="65535" placeholder="22" value="22" />
+          </label>
+          <label class="field">
+            <span>Kullanıcı</span>
+            <input name="user" type="text" placeholder="boş = yerel kullanıcı" />
+          </label>
+          <label class="field">
+            <span>Kimlik tipi</span>
+            <select name="authType">
+              <option value="">Otomatik</option>
+              <option value="key">Anahtar</option>
+              <option value="password">Şifre</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Anahtar yolu</span>
+            <input name="keyPath" type="text" placeholder="~/.ssh/id_rsa" />
+          </label>
+          <label class="field full">
+            <span>Şifre <small>(opsiyonel)</small></span>
+            <input name="password" type="password" placeholder="anahtar kullanıyorsan boş bırak" />
+          </label>
+          <label class="field full">
+            <span>Etiketler <small>(virgülle)</small></span>
+            <input name="tags" type="text" placeholder="prod,oracle,db" />
+          </label>
+          <label class="field full">
+            <span>Ek SSH argümanları</span>
+            <input name="extraSSHArgs" type="text" placeholder="örn. -J user@jump" />
+          </label>
+          <label class="field full">
+            <span>Notlar</span>
+            <textarea name="notes" rows="2" placeholder="isteğe bağlı"></textarea>
+          </label>
+        </div>
+        <div id="form-err" class="form-err hidden"></div>
+        <div class="modal-foot">
+          <button type="button" class="btn ghost" data-close>Vazgeç</button>
+          <button type="submit" class="btn primary">Kaydet</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Bulut senkron / hesap modalı -->
+  <div id="sync-overlay" class="overlay hidden">
+    <div class="modal small">
+      <div class="modal-head">
+        <h2>Oturum açın veya kayıt olun</h2>
+        <button class="modal-close" data-close>&times;</button>
+      </div>
+      <p class="sync-desc">Sunucu listenizi bulutta saklayıp cihazlarınız arasında otomatik eşitlemek için
+        oturum açın. Hesabınız yoksa “Kayıt ol” ile saniyeler içinde oluşturabilirsiniz.</p>
+
+      <!-- Giriş yapmamış görünüm -->
+      <div id="sync-guest">
+        <form id="sync-login-form" autocomplete="off" novalidate>
+          <div class="grid single">
+            <label class="field full hidden" id="url-field">
+              <span>API adresi</span>
+              <input name="url" type="text" placeholder="https://moorapi.fatihdurdu.xyz" />
+            </label>
+            <label class="field">
+              <span>Kullanıcı adı</span>
+              <input name="username" type="text" placeholder="örn. fatih" />
+            </label>
+            <label class="field">
+              <span>Şifre</span>
+              <input name="password" type="password" placeholder="••••••••" />
+            </label>
+          </div>
+          <button type="button" class="linklike" id="btn-sync-urltoggle">Kendi API sunucunuzu kullanın (self-hosted)…</button>
+          <div id="sync-err" class="form-err hidden"></div>
+          <div class="modal-foot">
+            <button type="button" class="btn ghost" data-close>Vazgeç</button>
+            <button type="button" class="btn ghost" id="btn-sync-register">Kayıt ol</button>
+            <button type="submit" class="btn primary">Giriş yap</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Giriş yapılmış görünüm -->
+      <div id="sync-authed" class="hidden">
+        <p id="sync-account-line" class="sync-account"></p>
+        <div class="sync-subrow">
+          <button type="button" class="btn ghost" id="btn-sync-changepass">Şifre değiştir</button>
+          <button type="button" class="btn danger" id="btn-sync-deleteacc">Hesabı sil</button>
+        </div>
+        <form id="sync-pass-form" class="hidden" autocomplete="off" novalidate>
+          <div class="grid single">
+            <label class="field">
+              <span>Mevcut şifre</span>
+              <input name="oldpass" type="password" />
+            </label>
+            <label class="field">
+              <span>Yeni şifre (en az 8)</span>
+              <input name="newpass" type="password" />
+            </label>
+          </div>
+          <button type="submit" class="btn primary">Yeni şifreyi kaydet</button>
+        </form>
+        <div id="sync-err2" class="form-err hidden"></div>
+        <div class="modal-foot">
+          <button type="button" class="btn ghost" id="btn-sync-logout">Çıkış yap</button>
+          <button type="button" class="btn primary" id="btn-sync-now">Şimdi eşitle</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Genel onay (silme, oturum kapatma vb.) -->
+  <div id="confirm-overlay" class="overlay hidden">
+    <div class="modal small">
+      <div class="modal-head">
+        <h2 id="confirm-title">Onay</h2>
+        <button class="modal-close" data-close>&times;</button>
+      </div>
+      <p id="confirm-text" class="confirm-text"></p>
+      <div class="modal-foot">
+        <button type="button" class="btn ghost" data-close>Vazgeç</button>
+        <button id="btn-confirm-yes" class="btn danger">Onayla</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Terminal sağ tık menüsü -->
+  <div id="ctx-menu" class="ctx-menu hidden"></div>
+
+  <!-- Durum çubuğu (toast) -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="./vendor/xterm.js"></script>
+  <script src="./vendor/addon-fit.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>

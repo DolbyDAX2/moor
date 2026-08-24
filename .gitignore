@@ -1,0 +1,6 @@
+# Derleme çıktıları
+/moor
+/dist/AppDir/
+/dist/*.AppImage
+*.tmp
+.DS_Store
