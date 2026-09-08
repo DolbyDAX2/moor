@@ -23,19 +23,25 @@ const (
 
 // Server uygulamaya kaydedilmiş uzak bir sunucudur.
 type Server struct {
-	ID           string    `json:"id"`
-	Name         string    `json:"name"`
-	Host         string    `json:"host"`
-	Port         int       `json:"port"`
-	User         string    `json:"user,omitempty"`
-	AuthType     AuthType  `json:"auth_type"`
-	KeyPath      string    `json:"key_path,omitempty"`
-	Password     string    `json:"password,omitempty"`
-	ExtraSSHArgs string    `json:"extra_ssh_args,omitempty"`
-	Notes        string    `json:"notes,omitempty"`
-	Tags         []string  `json:"tags,omitempty"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID       string   `json:"id"`
+	Name     string   `json:"name"`
+	Host     string   `json:"host"`
+	Port     int      `json:"port"`
+	User     string   `json:"user,omitempty"`
+	AuthType AuthType `json:"auth_type"`
+	KeyPath  string   `json:"key_path,omitempty"`
+	// KeyContent, anahtar dosyasının içeriğini taşır; böylece dosya
+	// sisteminin olmadığı cihazlarda (Android) anahtar senkronla
+	// kullanılabilir. Senkron öncesi [syncx.BackfillKeyContent]
+	// ile KeyPath'ten doldurulur.
+	KeyContent    string    `json:"key_content,omitempty"`
+	KeyPassphrase string    `json:"key_passphrase,omitempty"`
+	Password      string    `json:"password,omitempty"`
+	ExtraSSHArgs  string    `json:"extra_ssh_args,omitempty"`
+	Notes         string    `json:"notes,omitempty"`
+	Tags          []string  `json:"tags,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // NewID kısa rastgele bir kimlik üretir.

@@ -30,11 +30,14 @@ func MergeServers(local, remote []*model.Server) []*model.Server {
 			out = append(out, l)
 			continue
 		}
+		var winner, loser *model.Server
 		if r.UpdatedAt.After(l.UpdatedAt) {
-			out = append(out, r)
+			winner, loser = r, l
 		} else {
-			out = append(out, l)
+			winner, loser = l, r
 		}
+		inheritKeyMaterial(winner, loser)
+		out = append(out, winner)
 	}
 	for _, r := range remote {
 		if !seen[r.ID] {
@@ -62,6 +65,9 @@ type SyncSummary struct {
 //
 // Dönen merged listesi istemcinin yeni durumudur (store'a yazılır).
 func SyncStore(c *Client, local []*model.Server, lastVersion int64) ([]*model.Server, SyncSummary, error) {
+	// Anahtar içeriğini senkron verisine göm (Android tarafı için).
+	BackfillKeyContent(local)
+
 	state, err := c.GetState()
 	if err != nil {
 		return nil, SyncSummary{}, fmt.Errorf("durum alınamadı: %w", err)
@@ -113,4 +119,21 @@ func findServer(list []*model.Server, id string) *model.Server {
 		}
 	}
 	return nil
+}
+
+// inheritKeyMaterial, kazanan kaydın anahtar içeriği boşken kaybedenin
+// doluysa içeriği (ve parolası) devralmasını sağlar. Anahtar içeriği
+// updated_at'ı taşımayan bir "ek" alan olduğu için eski kopyanın
+// kazanması onu sonsuza dek silebilirdi; bu kural silişi engeller.
+func inheritKeyMaterial(winner, loser *model.Server) {
+	if winner.AuthType != model.AuthKey {
+		return
+	}
+	if winner.KeyContent != "" || loser.KeyContent == "" {
+		return
+	}
+	winner.KeyContent = loser.KeyContent
+	if winner.KeyPassphrase == "" {
+		winner.KeyPassphrase = loser.KeyPassphrase
+	}
 }

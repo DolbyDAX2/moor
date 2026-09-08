@@ -67,6 +67,11 @@ moor logout
 - `moor sync`, yerel + uzak listeyi akıllıca birleştirir: aynı kayıttaki
   `updated_at` yenisi kazanır; yalnızca bir tarafta olanlar eklenir. Çakışma
   durumunda (409) sunucunun döndürdüğü güncel listeyle otomatik merge yapılır.
+- Anahtarla doğrulanan sunucularda `key_content` alanı, her sync öncesi
+  `key_path` dosyasının güncel içeriğiyle doldurulur (syncx/backfill.go).
+  Böylece Android uygulaması dosya yolu olmadan anahtarı doğrudan kullanır;
+  dosya değişirse içerik de değişir. Bu alan API tarafından saydam taşınır
+  (aynı şifreli blob içinde), API değişikliği gerektirmez.
 - GUI'de üst bardaki **☁ Senkron** butonu ile giriş/kayıt/çıkış ve "Senkronize Et"
 unabilirsin.
 - Otomatik senkron: GUI açılışta sessizce pull yapılır; listedeki değişiklikler

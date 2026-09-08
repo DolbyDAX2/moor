@@ -189,6 +189,12 @@ func (a *App) saveServer(in ServerInput) error {
 	if in.ID == "" {
 		a.st.Add(sv)
 	} else {
+		// Formda yer almayan senkron alanlarını mevcut kayıttan devral
+		// (anahtar içeriği silinmesin).
+		if old := a.st.FindByID(in.ID); old != nil {
+			sv.KeyContent = old.KeyContent
+			sv.KeyPassphrase = old.KeyPassphrase
+		}
 		a.st.Update(sv)
 	}
 	return a.st.Save()

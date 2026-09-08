@@ -173,6 +173,9 @@ func cmdLS(st *store.Store, args []string) {
 	asJSON := fs.Bool("json", false, "JSON çıktısı")
 	fs.Parse(args)
 	servers := st.List()
+	// Teşhis kolaylığı: dosyalar okunabiliyorsa içeriğin dolu halini göster
+	// (senkronun ne göndereceğinin aynası).
+	syncx.BackfillKeyContent(servers)
 	if *asJSON {
 		out, _ := json.MarshalIndent(servers, "", "  ")
 		fmt.Println(string(out))

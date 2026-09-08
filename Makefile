@@ -24,8 +24,10 @@ appimage: build
 	cp moor dist/AppDir/usr/bin/moor
 	cp dist/moor.desktop dist/AppDir/usr/share/applications/moor.desktop
 	cp dist/moor.png dist/AppDir/usr/share/icons/hicolor/256x256/apps/moor.png
-	cd dist && /tmp/linuxdeploy.AppImage --appdir ./AppDir
-	cd dist && /tmp/linuxdeploy.AppImage --appdir ./AppDir -o appimage
+	# NO_STRIP: linuxdeploy'ın paketli eski strip'i yeni glibc kütüphanelerini
+	# (.relr.dyn) okuyamıyor; sistem binutils zaten çok daha yeni.
+	cd dist && NO_STRIP=1 /tmp/linuxdeploy.AppImage --appdir ./AppDir
+	cd dist && NO_STRIP=1 /tmp/linuxdeploy.AppImage --appdir ./AppDir -o appimage
 
 clean:
 	rm -f moor
