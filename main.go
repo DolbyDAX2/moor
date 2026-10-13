@@ -26,7 +26,7 @@ import (
 	"moor/syncx"
 )
 
-const version = "0.1.0"
+const version = "0.1.2"
 
 func main() {
 	args := os.Args[1:]
@@ -131,7 +131,7 @@ Veri dosyası: Linux ~/.config/moor/servers.json, Windows %APPDATA%\moor\servers
 
 Windows notları:
   - ssh/scp/sftp için sistemde OpenSSH gerekir (Windows 10/11'de varsayılandır).
-  - rsync varsayılan olarak yoktur (Windows 11 24H2+ taşır; yoksa WSL kullanılabilir).
+  - rsync ayrı kurulum veya WSL gerektirir; Windows ile birlikte gelmez.
   - Şifreli sunucularda sshpass yoktur: etkileşimli şifre sorusu sorulur.
 
 moor add flag'leri:
@@ -187,7 +187,7 @@ func requireBinary(bin, hint string) {
 
 func rsyncHint() string {
 	if runtime.GOOS == "windows" {
-		return "Windows'ta rsync varsayılan olarak yoktur (Windows 11 24H2+ taşır; alternatif: WSL)"
+		return "Windows'ta rsync ayrı kurulum veya WSL gerektirir"
 	}
 	return "önce rsync kurun"
 }

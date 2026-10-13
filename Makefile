@@ -1,15 +1,19 @@
 WAILS_TAGS := production,webkit2_41
 
-.PHONY: build build-win install test clean appimage
+.PHONY: build build-win release-win install test clean appimage
 
 # Tek binary: CLI + masaüstü GUI (argümansız çalıştırma da GUI'yi açar).
 build:
 	go build -tags "$(WAILS_TAGS)" -o moor .
 
-# Windows derlemesi (cgo gerektirmez; WebView2 runtime Win10/11'de hazır).
+# Windows derlemesi (cgo gerektirmez; GUI için WebView2 runtime gerekir).
 # webkit2_41 etiketi Linux'a özgüdür, Windows'ta yalnız production kullanılır.
 build-win:
 	go build -tags production -o moor.exe .
+
+# Windows üzerinde Inno Setup 6 ile kurulum EXE'si ve taşınabilir EXE üretir.
+release-win:
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows-release.ps1
 
 install: build
 	install -d $(HOME)/.local/bin
@@ -35,5 +39,6 @@ appimage: build
 	cd dist && NO_STRIP=1 /tmp/linuxdeploy.AppImage --appdir ./AppDir -o appimage
 
 clean:
-	rm -f moor
-	rm -rf dist
+	rm -f moor moor.exe moor.exe~ moor_windows_amd64.syso
+	rm -rf dist/AppDir dist/windows
+	rm -f dist/*.AppImage

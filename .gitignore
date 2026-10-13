@@ -1,5 +1,9 @@
 # Derleme çıktıları
 /moor
+/moor.exe
+/moor.exe~
+/moor_windows_amd64.syso
+/dist/windows/
 /dist/AppDir/
 /dist/*.AppImage
 *.tmp
