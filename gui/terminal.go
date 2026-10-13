@@ -4,24 +4,23 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"fmt"
-	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
-	"github.com/creack/pty"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"moor/sshx"
 )
 
-// termSession bir PTY içine başlatılmış canlı oturumdur.
+// termSession bir PTY (Unix) / ConPTY (Windows) içine başlatılmış canlı oturumdur.
 type termSession struct {
 	id   string
-	cmd  *exec.Cmd
-	ptmx *os.File
+	io   ptyIO
+	done func() int // sürecin çıkışını bekler, çıkış kodunu döndürür
 }
 
 var (
@@ -71,7 +70,8 @@ func utf8ValidEnd(b []byte) int {
 	return 0
 }
 
-// startPTY verilen komutu bir PTY içinde başlatır ve oturum kimliği döndürür.
+// startPTY verilen komutu bir PTY (Unix) / ConPTY (Windows) içinde
+// başlatır ve oturum kimliği döndürür.
 func (a *App) startPTY(argv []string, cols, rows int) (string, error) {
 	if cols <= 0 {
 		cols = 80
@@ -79,30 +79,30 @@ func (a *App) startPTY(argv []string, cols, rows int) (string, error) {
 	if rows <= 0 {
 		rows = 24
 	}
-	if _, err := exec.LookPath(argv[0]); err != nil {
-		return "", fmt.Errorf("komut bulunamadı: %s", argv[0])
-	}
-	c := exec.Command(argv[0], argv[1:]...)
-	// Gömülü terminal xterm-256color emüle eder (xterm.js). GUI masaüstünden
-	// başlatıldığında ortamda TERM olmayabilir; ssh onu iletmez ve remote'daki
-	// kabuk (fish vb.) uyarı verir. TERM'i garantiyle doğru değere sabitle.
-	c.Env = withTerm(os.Environ(), "xterm-256color")
-	f, err := pty.StartWithSize(c, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
+	io, done, err := startPty(argv, cols, rows)
 	if err != nil {
 		return "", err
 	}
 	id := newSessID()
+	s := &termSession{id: id, io: io, done: done}
 	termsMu.Lock()
-	terms[id] = &termSession{id: id, cmd: c, ptmx: f}
+	terms[id] = s
 	termsMu.Unlock()
 
-	go a.termReader(id)
+	readerDone := make(chan struct{})
+	go a.termReader(id, readerDone)
 	go func() {
-		_ = c.Wait()
-		code := 0
-		if c.ProcessState != nil {
-			code = c.ProcessState.ExitCode()
+		code := done()
+		// Çocuk çıktığında pipe'ta kalan son veriyi termReader'ın okuması için
+		// kısa bir süre bekle. ConPTY'de çocuk çıkınca EOF otomatik gelmez
+		// (conhost pipe'ın client ucunu tutar); bu yüzden süre dolunca pipe'ları
+		// kapatıp termReader'ı unblock et — yoksa term:exit hiç gelmez.
+		select {
+		case <-readerDone:
+		case <-time.After(200 * time.Millisecond):
 		}
+		_ = s.io.Close()
+		<-readerDone
 		wailsruntime.EventsEmit(a.ctx, "term:exit:"+id, map[string]any{"code": code})
 		termsMu.Lock()
 		delete(terms, id)
@@ -111,18 +111,22 @@ func (a *App) startPTY(argv []string, cols, rows int) (string, error) {
 	return id, nil
 }
 
-// termReader PTY çıktısını okur ve (UTF-8 sınır güvenli) parçalar halinde öne iletilir.
-func (a *App) termReader(id string) {
+// termReader PTY çıktısını okur ve (UTF-8 sınır güvenli) parçalar halinde öne
+// iletilir. Okuma bittiğinde (EOF/hata) readerDone kapatılır; böylece çağrıcı
+// tüm verinin iletildiğinden emin olarak oturumu kapatabilir.
+func (a *App) termReader(id string, readerDone chan<- struct{}) {
 	termsMu.Lock()
 	s := terms[id]
 	termsMu.Unlock()
 	if s == nil {
+		close(readerDone)
 		return
 	}
+	defer close(readerDone)
 	buf := make([]byte, 16384)
 	var left []byte
 	for {
-		n, err := s.ptmx.Read(buf)
+		n, err := s.io.Read(buf)
 		if n > 0 {
 			data := make([]byte, len(left)+n)
 			copy(data, left)
@@ -156,7 +160,15 @@ func (a *App) StartSSHTerminal(serverID string, cols, rows int) (string, error) 
 }
 
 // StartLocalShell yerel bir kabuk (veya cmdText verilirse o komutu) PTY içinde başlatır.
+// Windows'ta yerel kabuk cmd.exe'dir (ConPTY üzerinden); komut metni
+// "cmd /c <metin>" olarak çalıştırılır.
 func (a *App) StartLocalShell(cols, rows int, cmdText string) (string, error) {
+	if runtime.GOOS == "windows" {
+		if cmdText != "" {
+			return a.startPTY([]string{"cmd", "/c", cmdText}, cols, rows)
+		}
+		return a.startPTY([]string{"cmd"}, cols, rows)
+	}
 	if cmdText != "" {
 		return a.startPTY([]string{"/bin/sh", "-c", cmdText}, cols, rows)
 	}
@@ -175,7 +187,7 @@ func (a *App) WriteTerminal(sessID, data string) error {
 	if s == nil {
 		return errors.New("oturum bulunamadı")
 	}
-	_, err := s.ptmx.Write([]byte(data))
+	_, err := s.io.Write([]byte(data))
 	return err
 }
 
@@ -190,7 +202,7 @@ func (a *App) ResizeTerminal(sessID string, cols, rows int) error {
 	if cols <= 0 || rows <= 0 {
 		return nil
 	}
-	return pty.Setsize(s.ptmx, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
+	return s.io.Resize(cols, rows)
 }
 
 // CloseTerminal oturumu kapatır ve süreci sonlandırır.
@@ -202,9 +214,5 @@ func (a *App) CloseTerminal(sessID string) error {
 	if s == nil {
 		return nil
 	}
-	_ = s.ptmx.Close()
-	if s.cmd.Process != nil {
-		_ = s.cmd.Process.Kill()
-	}
-	return nil
+	return s.io.Close()
 }

@@ -19,16 +19,18 @@ type Store struct {
 	servers []*model.Server
 }
 
+// configDir platforma uygun konfigürasyon dizinini döndürür:
+// Linux/macOS: $XDG_CONFIG_HOME (varsayılan ~/.config), Windows: %APPDATA%.
+func configDir() (string, error) {
+	return os.UserConfigDir()
+}
+
 // DefaultPath varsayılan veri dosyası yolunu döndürür:
-// $XDG_CONFIG_HOME/moor/servers.json (varsayılan ~/.config/...)
+// Linux: ~/.config/moor/servers.json, Windows: %APPDATA%\moor\servers.json
 func DefaultPath() (string, error) {
-	dir := os.Getenv("XDG_CONFIG_HOME")
-	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		dir = filepath.Join(home, ".config")
+	dir, err := configDir()
+	if err != nil {
+		return "", err
 	}
 	return filepath.Join(dir, "moor", "servers.json"), nil
 }
@@ -36,13 +38,9 @@ func DefaultPath() (string, error) {
 // MigrateLegacyPath, eski sunucukontrol dizininden yeni moor dizinine
 // veri taşır (yalnızca yeni dosya yoksa).
 func MigrateLegacyPath() {
-	dir := os.Getenv("XDG_CONFIG_HOME")
-	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return
-		}
-		dir = filepath.Join(home, ".config")
+	dir, err := configDir()
+	if err != nil {
+		return
 	}
 	oldFile := filepath.Join(dir, "sunucukontrol", "servers.json")
 	newFile := filepath.Join(dir, "moor", "servers.json")

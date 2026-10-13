@@ -4,11 +4,14 @@ package sshx
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -33,11 +36,49 @@ func ExpandPath(p string) string {
 	return p
 }
 
+// resolveKeyPath Windows'ta senkronlanmış KeyContent'i dosyaya aktarır;
+// böylece başka OS'ten gelen KeyPath kullanılabilir. Diğer platformların
+// mevcut KeyPath davranışı korunur.
+func resolveKeyPath(s *model.Server) string {
+	if s.AuthType != model.AuthKey {
+		return ""
+	}
+	if content := strings.TrimSpace(s.KeyContent); runtime.GOOS == "windows" && content != "" {
+		if p, err := materializeKey(content); err == nil {
+			return p
+		}
+	}
+	if strings.TrimSpace(s.KeyPath) != "" {
+		return ExpandPath(s.KeyPath)
+	}
+	return ""
+}
+
+// materializeKey anahtar içeriğini 0600 izinli, içerik hash'i adlı geçici bir
+// dosyaya yazar ve yolunu döndürür. Dosya zaten aynı içerikle varsa yeniden
+// yazılmaz. Dizin 0700 (sadece sahip) olur.
+func materializeKey(content string) (string, error) {
+	sum := sha256.Sum256([]byte(content))
+	name := "moor-key-" + hex.EncodeToString(sum[:8]) + ".pem"
+	dir := filepath.Join(os.TempDir(), "moor-keys")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, name)
+	if existing, err := os.ReadFile(path); err == nil && string(existing) == content {
+		return path, nil // zaten aynı içerik
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
 // SSHArgs sunucu için ortak ssh seçeneklerini döndürür.
 func SSHArgs(s *model.Server) []string {
 	args := []string{"-p", strconv.Itoa(s.Port), "-o", "StrictHostKeyChecking=accept-new"}
-	if s.AuthType == model.AuthKey && strings.TrimSpace(s.KeyPath) != "" {
-		args = append(args, "-i", ExpandPath(s.KeyPath))
+	if keyPath := resolveKeyPath(s); keyPath != "" {
+		args = append(args, "-i", keyPath)
 	}
 	args = append(args, strings.Fields(s.ExtraSSHArgs)...)
 	return args
@@ -77,8 +118,8 @@ func RemoteCommandFull(s *model.Server, cmdText string) []string {
 // SCPFullCommand scp komut satırını döndürür.
 func SCPFullCommand(s *model.Server, src, dst string) []string {
 	args := []string{"-P", strconv.Itoa(s.Port)}
-	if s.AuthType == model.AuthKey && strings.TrimSpace(s.KeyPath) != "" {
-		args = append(args, "-i", ExpandPath(s.KeyPath))
+	if keyPath := resolveKeyPath(s); keyPath != "" {
+		args = append(args, "-i", keyPath)
 	}
 	full := append([]string{}, execPrefix(s, "scp")...)
 	full = append(full, args...)

@@ -10,7 +10,7 @@ import (
 )
 
 // Credentials, senkronizasyon hesabının istemci tarafındaki kaydı
-// (~/.config/moor/credentials.json, 0600).
+// (Linux: ~/.config/moor/credentials.json, Windows: %APPDATA%\moor\credentials.json).
 type Credentials struct {
 	ServerURL       string    `json:"server"`
 	Username        string    `json:"username"`
@@ -22,15 +22,12 @@ type Credentials struct {
 // LoggedIn hesap bilgisi olup olmadığını sorar.
 func (c *Credentials) LoggedIn() bool { return c != nil && c.Token != "" }
 
-// CredentialsPath kimlik dosyası yolunu döndürür (store ile aynı dizin).
+// CredentialsPath kimlik dosyası yolunu döndürür (store ile aynı dizin;
+// Linux: ~/.config/moor, Windows: %APPDATA%\moor).
 func CredentialsPath() (string, error) {
-	dir := os.Getenv("XDG_CONFIG_HOME")
-	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		dir = filepath.Join(home, ".config")
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
 	}
 	return filepath.Join(dir, "moor", "credentials.json"), nil
 }

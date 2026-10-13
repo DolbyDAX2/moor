@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -74,8 +75,9 @@ func NewApp() *App {
 }
 
 // startup uygulama açıldığında çağrılır.
-// jsLogPath arabağlantı (JS↔Go) olaylarını kaydeden hata ayıklama dosyası.
-const jsLogPath = "/tmp/skgui_js.log"
+// jsLogPath arabağlantı (JS↔Go) olaylarını kaydeden hata ayıklama dosyası
+// (platformun geçici dizini: Windows %TEMP%, Linux /tmp).
+var jsLogPath = filepath.Join(os.TempDir(), "moor_gui_js.log")
 
 func logJS(msg string) {
 	line := time.Now().Format("2006-01-02 15:04:05.000") + " " + msg + "\n"
@@ -90,6 +92,10 @@ func (a *App) Log(msg string) { logJS("js: " + msg) }
 
 // Env ortam değişkeni değerini döndürür (yalnızca yerel hata ayıklama için).
 func (a *App) Env(name string) string { return os.Getenv(name) }
+
+// Platform çalışılan işletim sistemini döndürür (runtime.GOOS);
+// frontend, platforma özgü komut/sözdizimi seçiminde kullanır.
+func (a *App) Platform() string { return runtime.GOOS }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx

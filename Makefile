@@ -1,10 +1,15 @@
 WAILS_TAGS := production,webkit2_41
 
-.PHONY: build install test clean appimage
+.PHONY: build build-win install test clean appimage
 
 # Tek binary: CLI + masaüstü GUI (argümansız çalıştırma da GUI'yi açar).
 build:
 	go build -tags "$(WAILS_TAGS)" -o moor .
+
+# Windows derlemesi (cgo gerektirmez; WebView2 runtime Win10/11'de hazır).
+# webkit2_41 etiketi Linux'a özgüdür, Windows'ta yalnız production kullanılır.
+build-win:
+	go build -tags production -o moor.exe .
 
 install: build
 	install -d $(HOME)/.local/bin

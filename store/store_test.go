@@ -3,6 +3,7 @@ package store
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"moor/model"
@@ -59,6 +60,9 @@ func TestStoreRoundTrip(t *testing.T) {
 }
 
 func TestStoreFilePermission(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows'ta POSIX izinleri raporlanmaz (NTFS ACL kullanılır)")
+	}
 	dir := t.TempDir()
 	path := filepath.Join(dir, "servers.json")
 	st, _ := Load(path)

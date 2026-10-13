@@ -8,7 +8,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -80,9 +82,9 @@ func main() {
 	case "export":
 		cmdExport(st)
 	case "login":
-		cmdLogin(args[1:])
+		cmdLogin(st, args[1:])
 	case "register":
-		cmdRegister(args[1:])
+		cmdRegister(st, args[1:])
 	case "logout":
 		cmdLogout()
 	case "sync":
@@ -116,14 +118,21 @@ Kullanım:
                            ~/.ssh/config'ten sunucu içe aktarır
   moor export              tüm veriyi JSON olarak yazar (yedek)
   moor register [--user AD] [--pass ŞİFRE]
-                           yeni senkron hesabı oluşturur ve giriş yapar
+                           yeni senkron hesabı oluşturur, giriş yapar ve eşitler
   moor login [--user AD] [--pass ŞİFRE]
-                           senkron hesabına giriş yapar
+                           senkron hesabına giriş yapar ve buluttan eşitler
   (URL belirtilmezse varsayılan sunucu kullanılır:
    " + syncx.DefaultBaseURL + ")
   moor logout              senkron oturumunu kapatır
   moor sync                sunucu listesini bulutla eşitler
   moor version
+Veri dosyası: Linux ~/.config/moor/servers.json, Windows %APPDATA%\moor\servers.json
+  (MOOR_CONFIG ortam değişkeniyle değiştirilebilir)
+
+Windows notları:
+  - ssh/scp/sftp için sistemde OpenSSH gerekir (Windows 10/11'de varsayılandır).
+  - rsync varsayılan olarak yoktur (Windows 11 24H2+ taşır; yoksa WSL kullanılabilir).
+  - Şifreli sunucularda sshpass yoktur: etkileşimli şifre sorusu sorulur.
 
 moor add flag'leri:
   --name AD            (zorunlu)
@@ -135,9 +144,6 @@ moor add flag'leri:
   --tags "a,b"         etiketler
   --notes "..."        notlar
   --extra "-4"         ek ssh argümanları (ör. jump host: "-J user@jump")
-
-Veri dosyası: ~/.config/moor/servers.json
-  (MOOR_CONFIG ortam değişkeniyle değiştirilebilir)
 `)
 }
 
@@ -164,6 +170,33 @@ func findServer(st *store.Store, name string) *model.Server {
 		fatal(fmt.Errorf("sunucu bulunamadı: %s (moor ls ile listelenir)", name))
 	}
 	return sv
+}
+
+// requireBinary, komutun sisteme özgü binary'sinin (ssh, scp, rsync vb.)
+// kurulu olduğunu doğrular; yoksa açıklayıcı bir hata verir (Windows'ta
+// rsync gibi varsayılan olmayan araçlar için).
+func requireBinary(bin, hint string) {
+	if _, err := exec.LookPath(bin); err != nil {
+		msg := fmt.Sprintf("%s bu sistemde bulunamadı", bin)
+		if hint != "" {
+			msg += " — " + hint
+		}
+		fatal(errors.New(msg))
+	}
+}
+
+func rsyncHint() string {
+	if runtime.GOOS == "windows" {
+		return "Windows'ta rsync varsayılan olarak yoktur (Windows 11 24H2+ taşır; alternatif: WSL)"
+	}
+	return "önce rsync kurun"
+}
+
+func sshHint() string {
+	if runtime.GOOS == "windows" {
+		return "OpenSSH istemcisi gerekli (Windows 10/11'de Ayarlar → Uygulamalar → İsteğe bağlı özellikler → OpenSSH Client)"
+	}
+	return "önce OpenSSH kurun"
 }
 
 // --- komutlar ---
@@ -260,6 +293,7 @@ func cmdSSH(st *store.Store, args []string) {
 		fatal(errors.New("kullanım: moor ssh AD [ek ssh argümanları...]"))
 	}
 	sv := findServer(st, args[0])
+	requireBinary("ssh", sshHint())
 	argv := append(sshx.SSHFullCommand(sv), args[1:]...)
 	if err := sshx.RunInteractive(argv...); err != nil {
 		fatal(err)
@@ -271,6 +305,7 @@ func cmdRun(st *store.Store, args []string) {
 		fatal(errors.New("kullanım: moor run AD KOMUT..."))
 	}
 	sv := findServer(st, args[0])
+	requireBinary("ssh", sshHint())
 	cmdText := strings.Join(args[1:], " ")
 	res := sshx.RunCaptured(60*time.Second, sshx.RemoteCommandFull(sv, cmdText)...)
 	if res.Stdout != "" {
@@ -289,6 +324,7 @@ func cmdSCP(st *store.Store, args []string) {
 		fatal(errors.New("kullanım: moor scp AD KAYNAK HEDEF"))
 	}
 	sv := findServer(st, args[0])
+	requireBinary("scp", sshHint())
 	if err := sshx.RunInteractive(sshx.SCPFullCommand(sv, args[1], args[2])...); err != nil {
 		fatal(err)
 	}
@@ -299,6 +335,7 @@ func cmdRsync(st *store.Store, args []string) {
 		fatal(errors.New("kullanım: moor rsync AD KAYNAK HEDEF"))
 	}
 	sv := findServer(st, args[0])
+	requireBinary("rsync", rsyncHint())
 	if err := sshx.RunInteractive(sshx.RsyncFullCommand(sv, args[1], args[2])...); err != nil {
 		fatal(err)
 	}
@@ -309,6 +346,7 @@ func cmdSFTP(st *store.Store, args []string) {
 		fatal(errors.New("kullanım: moor sftp AD"))
 	}
 	sv := findServer(st, args[0])
+	requireBinary("sftp", sshHint())
 	if err := sshx.RunInteractive(sshx.SFTPFullCommand(sv)...); err != nil {
 		fatal(err)
 	}
@@ -324,6 +362,7 @@ func cmdFwd(st *store.Store, args []string) {
 	if err1 != nil || err2 != nil {
 		fatal(errors.New("portlar sayı olmalı"))
 	}
+	requireBinary("ssh", sshHint())
 	fmt.Fprintf(os.Stderr, "yönlendirme: localhost:%d → %s:%d (Ctrl+C ile durdur)\n", lp, args[2], rp)
 	if err := sshx.RunInteractive(sshx.ForwardFullCommand(sv, lp, args[2], rp)...); err != nil {
 		fatal(err)
@@ -355,6 +394,7 @@ func cmdTest(st *store.Store, args []string) {
 		fatal(errors.New("kullanım: moor test AD"))
 	}
 	sv := findServer(st, args[0])
+	requireBinary("ssh", sshHint())
 	res := sshx.SSHAuthCheck(sv, 15*time.Second)
 	if res.Err == nil {
 		fmt.Printf("%s: SSH oturum açma başarılı (%.2fs)\n", sv.Name, res.Duration.Seconds())
@@ -447,7 +487,7 @@ func parseSyncArgs(args []string) (url string, rest []string) {
 	return url, rest
 }
 
-func cmdLogin(args []string) {
+func cmdLogin(st *store.Store, args []string) {
 	// Go'nun flag paketi ilk konumsal argümanda parse'ı durdurur;
 	// URL'yi herhangibir yerde kabul etmek için önceden ayıklayıp kalanları
 	// flag olarak parse ediyoruz.
@@ -496,11 +536,16 @@ func cmdLogin(args []string) {
 	if err := creds.Save(); err != nil {
 		fatal(err)
 	}
-	fmt.Printf("giriş yapıldı: %s (%s) — 'moor sync' ile eşitleyebilirsiniz\n", *user, creds.ServerURL)
+	fmt.Printf("giriş yapıldı: %s (%s)\n", *user, creds.ServerURL)
+	// Girişten sonra hemen bir eşitleme turu: buluttaki kayıtlı sunucular
+	// bu cihaza gelsin. Hata girişin kendisini bozmasın.
+	if err := runSyncRound(st); err != nil {
+		fmt.Fprintf(os.Stderr, "uyarı: otomatik eşitleme başarısız: %v (daha sonra 'moor sync' ile deneyin)\n", err)
+	}
 }
 
 // cmdRegister yeni hesap oluşturur ve giriş yapar (cmdLogin ile aynı akış).
-func cmdRegister(args []string) {
+func cmdRegister(st *store.Store, args []string) {
 	// Aynen login gibi argüman ayrıştır; tek fark Register çağrısı.
 	urlStr, flagArgs := parseSyncArgs(args)
 	fs := flag.NewFlagSet("register", flag.ExitOnError)
@@ -548,6 +593,9 @@ func cmdRegister(args []string) {
 		fatal(err)
 	}
 	fmt.Printf("hesap oluşturuldu ve giriş yapıldı: %s (%s)\n", *user, creds.ServerURL)
+	if err := runSyncRound(st); err != nil {
+		fmt.Fprintf(os.Stderr, "uyarı: otomatik eşitleme başarısız: %v (daha sonra 'moor sync' ile deneyin)\n", err)
+	}
 }
 
 func cmdLogout() {
@@ -579,25 +627,41 @@ func cmdSync(st *store.Store) {
 	if !creds.LoggedIn() {
 		fatal(errors.New("önce giriş yapın: moor login"))
 	}
+	if err := runSyncRound(st); err != nil {
+		fatal(err)
+	}
+}
+
+// runSyncRound tam bir senkronizasyon turu yapar: depodaki listeyle bulutu
+// birleştirir, sonucu hem dosyaya hem kimlik bilgisine yazar.
+func runSyncRound(st *store.Store) error {
+	creds, err := syncx.LoadCredentials()
+	if err != nil {
+		return err
+	}
+	if !creds.LoggedIn() {
+		return errors.New("açık bir oturum yok")
+	}
 	c, err := syncx.NewClient(creds.ServerURL)
 	if err != nil {
-		fatal(err)
+		return err
 	}
 	c.SetToken(creds.Token)
 
 	merged, sum, err := syncx.SyncStore(c, st.List(), creds.LastSyncVersion)
 	if err != nil {
-		fatal(err)
+		return err
 	}
 	st.ReplaceAll(merged)
 	if err := st.Save(); err != nil {
-		fatal(err)
+		return err
 	}
 	creds.LastSyncVersion = sum.Version
 	creds.LastSyncAt = sum.At
 	if err := creds.Save(); err != nil {
-		fatal(err)
+		return err
 	}
 	fmt.Printf("senkron tamam: sürüm %d — yerel-only %d, uzak-only %d, çift taraflı değişiklik %d\n",
 		sum.Version, sum.LocalOnly, sum.RemoteOnly, sum.ChangedBoth)
+	return nil
 }

@@ -447,7 +447,10 @@ async function startTermSession(s) {
     sessId = await api.StartSSHTerminal(s.id, x.cols || 80, x.rows || 24);
   } catch (e) {
     jlog("StartSSHTerminal HATA: " + msg(e));
-    toast("SSH başlatılamadı: " + msg(e), "err");
+    // ConPTY başlatılamadıysa (ör. bu Windows sürümünde sahte konsol
+    // hatası) kullanıcıyı kilitleme: sistem terminalini aç.
+    toast("Gömülü terminal başlatılamadı — sistem terminalinde açılıyor", "err");
+    api.OpenInTerminal(s.id).catch((e2) => toast("terminal açılamadı: " + msg(e2), "err"));
     try { x.dispose(); } catch (_) {}
     paneEl.remove();
     return null;
@@ -460,12 +463,34 @@ async function startTermSession(s) {
   terms.tabs.push(t);
   terms.activeId = sessId;
 
-  const onData = (d) => { if (d) x.write(d); };
+  // ConPTY başlatma hatası tespiti: sahte konsolun çocuk süreci
+    // başlatma sırasında ölürse (ör. 0xC0000142 STATUS_DLL_INIT_FAILED)
+    // veri gelmez ve süreç hemen çıkar. Böyle durumlarda oturum asla
+    // kurulmaz; kullanıcıyı kilitlememek için sistem terminaline düşeriz.
+  let gotData = false;
+  const startedAt = Date.now();
+  const onData = (d) => { if (d) { gotData = true; x.write(d); } };
   const onExit = (info) => {
     t.exited = true;
+    const code = (info && typeof info.code === "number") ? info.code : null;
+    const quick = (Date.now() - startedAt) < 2000;
+    // 0xC0000142 = ConPTY çocuk başlatma hatası. 255 = ssh'nin kendi
+    // hata kodu (gerçek SSH hatası — dış terminal de başarısız olur,
+    // otomatik açma). 0 = temiz çıkış.
+    const conptyFail = (code === 0xC0000142)
+      || (quick && !gotData && code !== null && code !== 0 && code !== 255);
+    if (conptyFail) {
+      renderTermTabs();
+      try {
+        x.write("\r\n\x1b[31mGömülü terminal (ConPTY) bu Windows sürümünde başlatılamadı (kod " + code + ").\x1b[0m\r\n\x1b[90mSistem terminalinde açılıyor…\x1b[0m\r\n");
+      } catch (_) {}
+      toast("Gömülü terminal (ConPTY) çalışmıyor — sistem terminalinde açılıyor", "err");
+      api.OpenInTerminal(s.id).catch((e2) => toast("terminal açılamadı: " + msg(e2), "err"));
+      return;
+    }
     renderTermTabs();
     try {
-      x.write("\r\n\x1b[90m— oturum sonlandı" + (info && typeof info.code === "number" ? ` (kod ${info.code})` : "") + " — kapatmak için sekmedeki ×\x1b[0m\r\n");
+      x.write("\r\n\x1b[90m— oturum sonlandı" + (code !== null ? ` (kod ${code})` : "") + " — kapatmak için sekmedeki ×\x1b[0m\r\n");
     } catch (_) {}
   };
   window.runtime.EventsOn("term:data:" + sessId, onData);
@@ -673,6 +698,15 @@ async function syncLogin(asRegister) {
     if (asRegister) await api.Register(url, username, password);
     else await api.Login(url, username, password);
     toast(asRegister ? "hesap oluşturuldu ve giriş yapıldı" : "giriş yapıldı", "ok");
+    // Yeni oturumda hemen bir eşitleme turu: buluttaki kayıtlı
+    // sunucular bu cihaza gelsin (açılışta da autoSyncStartup var).
+    try {
+      const r = await api.SyncNow();
+      if (r.ok) { await load(false); toast("☁ eşitleme: " + r.message, "ok"); }
+      else toast("giriş tamam, eşitleme: " + r.message, "err");
+    } catch (se) {
+      toast("giriş tamam, eşitleme hatası: " + msg(se), "err");
+    }
     const acc = await api.AccountInfo();
     renderSyncView(acc);
   } catch (e) {
@@ -935,9 +969,16 @@ async function runSelfTest() {
   // --- Gömülü terminal altyapısı: yerel kabuk + PTY olay akışı (ağ gerektirmez) ---
   try {
     const marker = "SKPTY_" + Date.now();
+    const isWin = (await api.Platform().catch(() => "")) === "windows";
+    // Windows'ta kabuk cmd.exe olduğu için ortam değişkeni sözdizimi %VAR%
+    // ve komut ayırıcı & kullanılır; POSIX'te $VAR ve ; kullanılır.
+    const probeCmd = isWin
+      ? `echo ${marker} & echo TERM=%TERM%`
+      : `echo ${marker}; echo "TERM=[$TERM]"`;
+    const termExpect = isWin ? "TERM=xterm-256color" : "TERM=[xterm-256color]";
     let gotData = "";
     let exited = false;
-    const sess = await api.StartLocalShell(80, 24, `echo ${marker}; echo "TERM=[$TERM]"`);
+    const sess = await api.StartLocalShell(80, 24, probeCmd);
     jlog("selftest term: StartLocalShell ok sess=" + sess);
     window.runtime.EventsOn("term:data:" + sess, (d) => { gotData += d; });
     const exitWait = new Promise((resolve) => {
@@ -945,9 +986,9 @@ async function runSelfTest() {
       setTimeout(resolve, 6000);
     });
     await exitWait;
-    jlog("selftest term: veri=" + JSON.stringify(gotData.slice(0, 100)) + " exit=" + exited);
+    jlog("selftest term: veri=" + JSON.stringify(gotData.slice(0, 300)) + " exit=" + exited);
     if (!gotData.includes(marker)) jlog("selftest term UYARI: marker alınamadı");
-    if (!gotData.includes("TERM=[xterm-256color]")) jlog("selftest term UYARI: TERM=xterm-256color olamadı (raw: " + JSON.stringify(gotData.slice(0, 120)) + ")");
+    if (!gotData.includes(termExpect)) jlog("selftest term UYARI: TERM=xterm-256color olamadı (raw: " + JSON.stringify(gotData.slice(0, 300)) + ")");
     try { await api.CloseTerminal(sess); } catch (_) {}
     jlog("selftest term: tamam");
   } catch (e) {
