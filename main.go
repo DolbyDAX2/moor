@@ -26,10 +26,13 @@ import (
 	"moor/syncx"
 )
 
-const version = "0.1.2"
+const version = "0.1.3"
 
 func main() {
 	args := os.Args[1:]
+	if len(args) > 0 && args[0] != "gui" {
+		prepareCLIConsole()
+	}
 	if len(args) > 0 && (args[0] == "help" || args[0] == "-h" || args[0] == "--help") {
 		usage()
 		return

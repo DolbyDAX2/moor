@@ -1,5 +1,13 @@
 # Değişiklikler
 
+## v0.1.3
+
+- Windows GUI ve kurulum paketleri Windows GUI subsystem ile derlenir;
+  uygulama açılırken ek terminal penceresi oluşmaz.
+- CLI komutları yeni bir konsol açmadan çağıran terminale bağlanır;
+  yönlendirilmiş giriş/çıkış handle'ları korunur.
+- MSYS2 ve PowerShell'de CLI çıktısı doğrulandı; Linux davranışı değişmedi.
+
 ## v0.1.2
 
 ### Windows

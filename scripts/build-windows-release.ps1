@@ -70,7 +70,7 @@ try {
     if ($LASTEXITCODE) { throw "Version resource generation failed" }
     $env:GOOS = "windows"
     $env:GOARCH = "amd64"
-    & go build -trimpath -tags production -o "$build\moor.exe" .
+    & go build -trimpath -tags production -ldflags '-H windowsgui' -o "$build\moor.exe" .
     if ($LASTEXITCODE) { throw "Windows build failed" }
     Copy-Item README.md $build -Force
     $portable = "moor-$version-windows-amd64.exe"

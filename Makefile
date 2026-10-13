@@ -9,7 +9,7 @@ build:
 # Windows derlemesi (cgo gerektirmez; GUI için WebView2 runtime gerekir).
 # webkit2_41 etiketi Linux'a özgüdür, Windows'ta yalnız production kullanılır.
 build-win:
-	go build -tags production -o moor.exe .
+	go build -tags production -ldflags "-H windowsgui" -o moor.exe .
 
 # Windows üzerinde Inno Setup 6 ile kurulum EXE'si ve taşınabilir EXE üretir.
 release-win:

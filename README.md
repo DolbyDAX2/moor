@@ -1,6 +1,6 @@
 # moor
 
-**Güncel sürüm: v0.1.2** · [İndir](https://github.com/DolbyDAX2/moor/releases/latest)
+**Güncel sürüm: v0.1.3** · [İndir](https://github.com/DolbyDAX2/moor/releases/latest)
 
 Uzak sunucularınızı **kaydedip** terminalden ve masaüstü uygulamasından
 **kontrol etmenizi** sağlayan tek binary araç. Go ile yazıldı; derleme dışında
@@ -97,8 +97,8 @@ işlemlerini kullanabilirsin.
 
 ## Windows kurulumu (x64)
 
-1. [v0.1.2 Release](https://github.com/DolbyDAX2/moor/releases/tag/v0.1.2)
-   sayfasından `moor-0.1.2-windows-amd64-setup.exe` indir ve çalıştır.
+1. [v0.1.3 Release](https://github.com/DolbyDAX2/moor/releases/tag/v0.1.3)
+   sayfasından `moor-0.1.3-windows-amd64-setup.exe` indir ve çalıştır.
 2. Uygulama kullanıcı hesabına `%LOCALAPPDATA%\Programs\Moor` altında kurulur;
    yönetici izni istemez. Başlat menüsü kısayolu, isteğe bağlı masaüstü kısayolu
    ve kaldırıcı eklenir. Güncellemek için yeni kurulum dosyasını çalıştır.
@@ -116,8 +116,10 @@ terminal sistemin OpenSSH istemcisini tercih eder; yoksa PATH'teki `ssh` aranır
 `rsync` ayrı kurulum veya WSL gerektirir; Windows sürümüyle birlikte gelmesi
 varsayılmaz.
 
-Kurulumsuz kullanım için `moor-0.1.2-windows-amd64.exe` indir. Aynı OpenSSH ve
-WebView2 gereksinimleri geçerlidir. Kurulum PATH'i değiştirmez; CLI kullanımı:
+Kurulumsuz kullanım için `moor-0.1.3-windows-amd64.exe` indir. Aynı OpenSSH ve
+WebView2 gereksinimleri geçerlidir. GUI açılışında ek konsol penceresi açılmaz. CLI komutları mevcut terminale
+bağlanır; PowerShell'de çıktıyı beklemek için `| Out-Host` kullanılabilir.
+Kurulum PATH'i değiştirmez; CLI kullanımı:
 
 ```powershell
 & "$env:LOCALAPPDATA\Programs\Moor\moor.exe" version
@@ -127,7 +129,7 @@ WebView2 gereksinimleri geçerlidir. Kurulum PATH'i değiştirmez; CLI kullanım
 Dosyaların SHA-256 değerleri Release'teki `SHA256SUMS.txt` içindedir:
 
 ```powershell
-Get-FileHash .\moor-0.1.2-windows-amd64-setup.exe -Algorithm SHA256
+Get-FileHash .\moor-0.1.3-windows-amd64-setup.exe -Algorithm SHA256
 ```
 
 Moor EXE ve kurulum dosyası kod imzalı değildir; Windows SmartScreen uyarısı
@@ -159,7 +161,7 @@ make install          # ~/.local/bin/moor
 ### Windows derleme ve kurulum paketi üretme
 
 ```powershell
-go build -tags production -o moor.exe .
+go build -tags production -ldflags "-H windowsgui" -o moor.exe .
 .\moor.exe version
 
 # Kurulum paketi için ek derleme aracı:
